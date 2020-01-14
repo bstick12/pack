@@ -493,14 +493,16 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S, packFixturesDir, packP
 
 					when("--buildpack", func() {
 						when("the argument is a tgz or id", func() {
-							var notBuilderTgz string
+							var noopDupTgz, noop2Tgz string
 
 							it.Before(func() {
-								notBuilderTgz = h.CreateTGZ(t, filepath.Join(bpDir, "not-in-builder-buildpack"), "./", 0755)
+								noopDupTgz = h.CreateTGZ(t, filepath.Join(bpDir, "noop-buildpack-dup"), "./", 0755)
+								noop2Tgz = h.CreateTGZ(t, filepath.Join(bpDir, "noop-buildpack-2"), "./", 0755)
 							})
 
 							it.After(func() {
-								h.AssertNil(t, os.Remove(notBuilderTgz))
+								h.AssertNil(t, os.Remove(noopDupTgz))
+								h.AssertNil(t, os.Remove(noop2Tgz))
 							})
 
 							it("adds the buildpacks to the builder if necessary and runs them", func() {
@@ -509,24 +511,19 @@ func testAcceptance(t *testing.T, when spec.G, it spec.S, packFixturesDir, packP
 									repoName,
 									"-p",
 									filepath.Join("testdata", "mock_app"),
-									"--buildpack",
-									notBuilderTgz,
-									"--buildpack",
-									"simple/layers@simple-layers-version",
-									"--buildpack",
-									"noop.buildpack",
-									"--buildpack",
-									"read/env@latest",
-									"--env",
-									"DETECT_ENV_BUILDPACK=true",
+									"--buildpack", "simple/layers@simple-layers-version",
+									"--buildpack", noopDupTgz,
+									"--buildpack", noop2Tgz,
+									"--buildpack", "read/env",
+									"--env", "DETECT_ENV_BUILDPACK=true",
 								))
-								h.AssertContains(t, output, "NOOP Buildpack")
+								//h.AssertContains(t, output, "NOOP (Duplicate) Buildpack")
+								h.AssertContains(t, output, "NOOP (later version) Buildpack")
 								h.AssertContains(t, output, "Read Env Buildpack")
 								h.AssertContains(t, output, fmt.Sprintf("Successfully built image '%s'", repoName))
 
 								t.Log("app is runnable")
 								assertMockAppRunsWithOutput(t, repoName,
-									"Local Buildpack Dep Contents",
 									"Launch Dep Contents",
 									"Cached Dep Contents",
 								)
@@ -1383,7 +1380,8 @@ func createBuilder(t *testing.T, runImageMirror, configDir, packPath, lifecycleP
 	// ARCHIVE BUILDPACKS
 	buildpacks := []string{
 		"noop-buildpack",
-		"not-in-builder-buildpack",
+		"noop-buildpack-2",
+		"noop-buildpack-dup",
 		"other-stack-buildpack",
 		"read-env-buildpack",
 		"simple-layers-buildpack", // from package
